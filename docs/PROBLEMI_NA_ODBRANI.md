@@ -62,6 +62,11 @@ Na Windowsu je druga komanda:
 
 Nemoj odmah koristiti `--clean` / `-Clean`. Ta opcija briše namespace i podatke, pa Kubernetes mora ponovo da pravi sve resurse.
 
+Pokreći komande redom i sačekaj da se svaka završi. Nikada nemoj u jednom
+terminalu pokrenuti `start --clean`, a u drugom istovremeno `test --reset`:
+clean start briše ceo `iep` namespace, pa će grader usred rada izgubiti servise
+i prijaviti `Connection refused` ili timeout.
+
 ## Dijagnostika za 60 sekundi
 
 Pokreni redom:
@@ -424,6 +429,27 @@ Windows:
 ```
 
 `--reset` ne ruši klaster. Briše samo podatke prethodnog testiranja iz MongoDB/Redis-a, zadržava početnog direktora u MySQL-u i restartuje Ganache.
+
+Ako prvi deo testova prođe, a zatim odjednom svi portovi postanu nedostupni,
+proveri starost Podova:
+
+```bash
+kubectl get pods -n iep
+```
+
+Ako su svi Podovi odjednom stari samo nekoliko sekundi, neko je paralelno
+pokrenuo `start --clean` i ponovo napravio namespace. Sačekaj da se ta komanda
+potpuno završi, proveri da su svi servisi `READY 1/1`, pa tek onda ponovi samo:
+
+```bash
+./test.sh --reset
+```
+
+Windows PowerShell:
+
+```powershell
+.\test.ps1 -Reset
+```
 
 ## 14. Venv ili Python zavisnosti ne rade
 
