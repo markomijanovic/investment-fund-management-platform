@@ -1,0 +1,6 @@
+-r requirements.txt
+pytest==8.2.2
+pytest-cov==5.0.0
+fakeredis==2.23.2
+mongomock==4.1.2
+setuptools==70.3.0

@@ -1,0 +1,460 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: iep
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: iep-config
+  namespace: iep
+data:
+  SQL_HOST: mysql
+  SQL_PORT: "3306"
+  SQL_DATABASE: users
+  SQL_USER: iep
+  MONGO_DATABASE: investment_fund
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  BLOCKCHAIN_URL: http://ganache:8545
+  BLOCKCHAIN_SENDER: "0x90f8bf6a479f320ead074411a4b0e7944ea8c9c1"
+  CHECK_ONCE: "true"
+  DB_INIT_ATTEMPTS: "60"
+  DB_INIT_DELAY: "2"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: iep-secrets
+  namespace: iep
+type: Opaque
+stringData:
+  SQL_PASSWORD: iep-password
+  MYSQL_PASSWORD: iep-password
+  MYSQL_ROOT_PASSWORD: root-password
+  JWT_SECRET_KEY: replace-this-jwt-secret-before-production
+  MONGO_INITDB_ROOT_USERNAME: iep
+  MONGO_INITDB_ROOT_PASSWORD: iep-password
+  MONGO_URI: mongodb://iep:iep-password@mongo:27017/?authSource=admin
+  GANACHE_MNEMONIC: myth like bonus scare over problem client lizard pioneer submit female collect
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: iep
+spec:
+  selector:
+    app: mysql
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: 3306
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+  namespace: iep
+spec:
+  serviceName: mysql
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:8.0.36
+          ports:
+            - containerPort: 3306
+          env:
+            - name: MYSQL_DATABASE
+              valueFrom:
+                configMapKeyRef:
+                  name: iep-config
+                  key: SQL_DATABASE
+            - name: MYSQL_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: iep-config
+                  key: SQL_USER
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: iep-secrets
+                  key: MYSQL_PASSWORD
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: iep-secrets
+                  key: MYSQL_ROOT_PASSWORD
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - mysqladmin ping -h 127.0.0.1 -uroot -p"$MYSQL_ROOT_PASSWORD"
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          volumeMounts:
+            - name: mysql-data
+              mountPath: /var/lib/mysql
+  volumeClaimTemplates:
+    - metadata:
+        name: mysql-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongo
+  namespace: iep
+spec:
+  selector:
+    app: mongo
+  ports:
+    - name: mongo
+      port: 27017
+      targetPort: 27017
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mongo
+  namespace: iep
+spec:
+  serviceName: mongo
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mongo
+  template:
+    metadata:
+      labels:
+        app: mongo
+    spec:
+      containers:
+        - name: mongo
+          image: mongo:7.0.12
+          ports:
+            - containerPort: 27017
+          env:
+            - name: MONGO_INITDB_ROOT_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: iep-secrets
+                  key: MONGO_INITDB_ROOT_USERNAME
+            - name: MONGO_INITDB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: iep-secrets
+                  key: MONGO_INITDB_ROOT_PASSWORD
+          readinessProbe:
+            exec:
+              command:
+                - mongosh
+                - --quiet
+                - --eval
+                - db.adminCommand('ping').ok
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          volumeMounts:
+            - name: mongo-data
+              mountPath: /data/db
+  volumeClaimTemplates:
+    - metadata:
+        name: mongo-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: iep
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7.2.5-alpine
+          ports:
+            - containerPort: 6379
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 3
+            periodSeconds: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: iep
+spec:
+  selector:
+    app: redis
+  ports:
+    - port: 6379
+      targetPort: 6379
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ganache
+  namespace: iep
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ganache
+  template:
+    metadata:
+      labels:
+        app: ganache
+    spec:
+      containers:
+        - name: ganache
+          image: trufflesuite/ganache-cli:v6.12.2
+          command: ["/bin/sh", "-c"]
+          args:
+            - >-
+              exec node /app/ganache-core.docker.cli.js --hostname 0.0.0.0 --port 8545
+              --accounts 20 --mnemonic "$GANACHE_MNEMONIC"
+          env:
+            - name: GANACHE_MNEMONIC
+              valueFrom:
+                secretKeyRef:
+                  name: iep-secrets
+                  key: GANACHE_MNEMONIC
+          ports:
+            - containerPort: 8545
+          readinessProbe:
+            tcpSocket:
+              port: 8545
+            initialDelaySeconds: 5
+            periodSeconds: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ganache
+  namespace: iep
+spec:
+  type: LoadBalancer
+  selector:
+    app: ganache
+  ports:
+    - port: 8545
+      targetPort: 8545
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: sql-init
+  namespace: iep
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        app: sql-init
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: sql-init
+          image: iep-auth:latest
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "services.auth.init_db"]
+          envFrom:
+            - configMapRef:
+                name: iep-config
+            - secretRef:
+                name: iep-secrets
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth
+  namespace: iep
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: auth
+  template:
+    metadata:
+      labels:
+        app: auth
+    spec:
+      containers:
+        - name: auth
+          image: iep-auth:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: iep-config
+            - secretRef:
+                name: iep-secrets
+          ports:
+            - containerPort: 5000
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth
+  namespace: iep
+spec:
+  type: LoadBalancer
+  selector:
+    app: auth
+  ports:
+    - port: 5000
+      targetPort: 5000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: employee
+  namespace: iep
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: employee
+  template:
+    metadata:
+      labels:
+        app: employee
+    spec:
+      containers:
+        - name: employee
+          image: iep-employee:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: iep-config
+            - secretRef:
+                name: iep-secrets
+          ports:
+            - containerPort: 5000
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: employee
+  namespace: iep
+spec:
+  type: LoadBalancer
+  selector:
+    app: employee
+  ports:
+    - port: 5001
+      targetPort: 5000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: director
+  namespace: iep
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: director
+  template:
+    metadata:
+      labels:
+        app: director
+    spec:
+      containers:
+        - name: director
+          image: iep-director:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: iep-config
+            - secretRef:
+                name: iep-secrets
+          ports:
+            - containerPort: 5000
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: director
+  namespace: iep
+spec:
+  type: LoadBalancer
+  selector:
+    app: director
+  ports:
+    - port: 5002
+      targetPort: 5000
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: contract-checker
+  namespace: iep
+spec:
+  schedule: "*/1 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 3
+      template:
+        metadata:
+          labels:
+            app: contract-checker
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: contract-checker
+              image: iep-checker:latest
+              imagePullPolicy: IfNotPresent
+              command: ["python", "-m", "jobs.contract_checker"]
+              envFrom:
+                - configMapRef:
+                    name: iep-config
+                - secretRef:
+                    name: iep-secrets

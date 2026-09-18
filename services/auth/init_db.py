@@ -1,44 +1,51 @@
-from services.auth.app import create_app
-from services.auth.extensions import db
-from services.auth.models import User
+import os
+import time
 
-DIRECTOR_DATA = {
+from sqlalchemy.exc import OperationalError
+from werkzeug.security import generate_password_hash
+
+from services.auth.app import create_app
+from services.auth.models import User, db
+
+
+DIRECTOR = {
     "forename": "Scrooge",
     "surname": "McDuck",
     "email": "onlymoney@gmail.com",
     "password": "evenmoremoney",
 }
 
-def initialize_database():
+
+def initialize():
+    attempts = int(os.getenv("DB_INIT_ATTEMPTS", "30"))
+    delay = float(os.getenv("DB_INIT_DELAY", "2"))
     app = create_app()
 
-    with app.app_context():
-        db.create_all()
-
-        director=db.session.execute(
-            db.select(User).where(
-                User.email==DIRECTOR_DATA['email']
-            )
-        ).scalar_one_or_none()
-
-        if director is not None:
-            print("Director already exists.")
+    for attempt in range(1, attempts + 1):
+        try:
+            with app.app_context():
+                db.create_all()
+                director = User.query.filter_by(email=DIRECTOR["email"]).first()
+                if director is None:
+                    director = User(
+                        forename=DIRECTOR["forename"],
+                        surname=DIRECTOR["surname"],
+                        email=DIRECTOR["email"],
+                        password_hash=generate_password_hash(DIRECTOR["password"]),
+                        role="director",
+                    )
+                    db.session.add(director)
+                else:
+                    director.role = "director"
+                db.session.commit()
+            print("SQL database initialized successfully.", flush=True)
             return
+        except OperationalError as error:
+            if attempt == attempts:
+                raise
+            print(f"Database unavailable ({attempt}/{attempts}): {error}", flush=True)
+            time.sleep(delay)
 
-        director = User(
-            forename=DIRECTOR_DATA['forename'],
-            surname=DIRECTOR_DATA['surname'],
-            email=DIRECTOR_DATA['email'],
-            role="director"
-        )
-
-        director.set_password(DIRECTOR_DATA['password'])
-
-        db.session.add(director)
-        db.session.commit()
-
-        print("Database initialized.")
-        print("Initial director created.")
 
 if __name__ == "__main__":
-    initialize_database()
+    initialize()

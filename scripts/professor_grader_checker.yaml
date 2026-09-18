@@ -1,0 +1,35 @@
+# Privremeni Deployment koji koriste samo skripte profesorovog gradera.
+# Nije deo aplikacije iz k8s/all.yaml i automatski se brise nakon testova.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: professor-grader-checker
+  namespace: iep
+  labels:
+    app: professor-grader-checker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: professor-grader-checker
+  template:
+    metadata:
+      labels:
+        app: professor-grader-checker
+    spec:
+      restartPolicy: Always
+      containers:
+        - name: contract-checker
+          image: iep-checker:latest
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "jobs.contract_checker"]
+          env:
+            - name: CHECK_ONCE
+              value: "false"
+            - name: CHECK_INTERVAL_SECONDS
+              value: "2"
+          envFrom:
+            - configMapRef:
+                name: iep-config
+            - secretRef:
+                name: iep-secrets

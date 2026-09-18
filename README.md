@@ -1,341 +1,102 @@
-# Investment Fund Management Platform
+# IEP projekat — investicioni fond
 
-![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)
-![Flask](https://img.shields.io/badge/Flask-3.0-000000?style=flat-square&logo=flask&logoColor=white)
-![MongoDB](https://img.shields.io/badge/MongoDB-7-47A248?style=flat-square&logo=mongodb&logoColor=white)
-![Redis](https://img.shields.io/badge/Redis-7-DC382D?style=flat-square&logo=redis&logoColor=white)
-![Solidity](https://img.shields.io/badge/Solidity-0.8.19-363636?style=flat-square&logo=solidity&logoColor=white)
-![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)
+Mikroservisna Flask aplikacija za upravljanje investicionim fondom, pokrenuta u lokalnom Kubernetes klasteru. Zaposleni predlažu kupovinu ili prodaju imovine, direktor pokreće glasanje na Ethereum ugovoru, a periodični checker rezultat prenosi u MongoDB.
 
-A distributed backend for managing investment-fund assets and buy/sell orders. The platform combines role-based Flask services, relational and document storage, Redis-backed workflows, and smart-contract voting for investment decisions.
+## Šta je implementirano
 
-## Why this project
+- autentikacija i JWT uloge `employee` i `director`;
+- pretraga imovine i BUY/SELL nalozi;
+- glasanje na Solidity ugovoru: `approve`, `reject` i direktorski `veto`;
+- MySQL inicijalizacija kroz Kubernetes `Job`;
+- provera ugovora i ažuriranje MongoDB kroz Kubernetes `CronJob`;
+- tri replike employee servisa;
+- trajni MySQL i MongoDB podaci kroz PVC;
+- originalni profesorovi testovi bez izmena — poslednja provera: **179/179 bodova**.
 
-Investment decisions often involve multiple actors, temporary state, authorization rules, and an auditable approval process. This project models that workflow as a small distributed system:
+Za učenje projekta od početka koristi [docs/DETALJNO_OBJASNJENJE_PROJEKTA.md](docs/DETALJNO_OBJASNJENJE_PROJEKTA.md). Za kratak pregled i pitanja pročitaj [docs/ODBRANA.md](docs/ODBRANA.md), a ako nešto zakaže na odbrani koristi [docs/PROBLEMI_NA_ODBRANI.md](docs/PROBLEMI_NA_ODBRANI.md). Primeri mogućih zadataka sa MongoDB, MySQL i Redis bazom nalaze se u [docs/MODIFIKACIJE_BAZE.md](docs/MODIFIKACIJE_BAZE.md).
 
-- employees search the portfolio and submit buy or sell orders;
-- directors review pending orders and start a voting process;
-- an Ethereum smart contract records approvals, rejections, and director vetoes;
-- a background worker applies approved decisions to the portfolio and removes completed workflow state.
-
-The result is a practical demonstration of service separation, polyglot persistence, asynchronous processing, role-based security, and blockchain integration.
-
-## Architecture
-
-```mermaid
-flowchart LR
-    Client[API client] --> Auth[Auth Service<br/>:5000]
-    Client --> Employee[Employee Service<br/>:5001]
-    Client --> Director[Director Service<br/>:5002]
-
-    Auth --> SQL[(Relational DB)]
-    Employee --> Mongo[(MongoDB)]
-    Employee --> Redis[(Redis)]
-    Director --> Mongo
-    Director --> Redis
-    Director --> Chain[Ganache / Ethereum]
-
-    Checker[Blockchain Checker] --> Chain
-    Checker --> Redis
-    Checker --> Mongo
-```
-
-### Components
-
-| Component | Responsibility | Main dependencies |
-|---|---|---|
-| Auth Service | Registration, login, password hashing, JWT issuance, and user roles | Flask, SQLAlchemy, Flask-JWT-Extended |
-| Employee Service | Portfolio search and creation of buy/sell orders | Flask, MongoDB, Redis |
-| Director Service | Pending-order review, reports, contract deployment, and voting transaction generation | Flask, MongoDB, Redis, Web3.py |
-| Blockchain Checker | Polls voting contracts and applies finalized decisions | MongoDB, Redis, Web3.py |
-| `InvestmentVoting` | Majority voting with approved, rejected, and vetoed outcomes | Solidity, Ethereum/Ganache |
-
-## Core workflow
-
-1. A user registers and authenticates through the Auth Service.
-2. The Auth Service returns a JWT containing the user's role.
-3. An employee creates a buy or sell order, which is stored temporarily in Redis.
-4. A director reviews pending orders and starts a decision with an odd number of voter addresses.
-5. The Director Service deploys an `InvestmentVoting` contract and returns encoded transactions for approval, rejection, and veto actions.
-6. The Blockchain Checker monitors the contract status.
-7. Approved orders are applied idempotently to MongoDB; rejected or vetoed orders are discarded.
-8. Completed orders and contract references are removed from Redis.
-
-## Engineering highlights
-
-- Clear separation between authentication, employee, director, and background-processing responsibilities
-- JWT authentication with role-based route protection
-- Password hashing through Werkzeug
-- Flexible asset search with MongoDB filters and aggregation pipelines
-- Redis-backed temporary order and contract state
-- Solidity smart contract with voter allowlists, duplicate-vote protection, majority decisions, and director veto
-- Idempotent processing of finalized buy and sell orders
-- Health endpoints for service and dependency checks
-- Docker Compose environment for MongoDB, Redis, and a deterministic local Ethereum chain
-- Configurable infrastructure through environment variables
-
-## Technology stack
-
-| Area | Technologies |
-|---|---|
-| API and application layer | Python 3.12, Flask |
-| Authentication | Flask-JWT-Extended, Werkzeug password hashing |
-| Relational persistence | MySQL 8.4, Flask-SQLAlchemy, PyMySQL |
-| Portfolio persistence | MongoDB, PyMongo |
-| Workflow state | Redis |
-| Blockchain | Solidity, Web3.py, Ganache |
-| Development environment | Docker, Docker Compose, Kubernetes |
-
-## API overview
-
-All protected endpoints expect a bearer token:
-
-```http
-Authorization: Bearer <access-token>
-```
-
-### Auth Service - port `5000`
-
-| Method | Endpoint | Description |
-|---|---|---|
-| `POST` | `/register` | Register an employee account |
-| `POST` | `/login` | Authenticate and receive an access token |
-| `POST` | `/delete` | Delete the authenticated account |
-| `GET` | `/health` | Service health check |
-
-### Employee Service - port `5001`
-
-| Method | Endpoint | Description |
-|---|---|---|
-| `POST` | `/search` | Search assets by name, category, dates, and custom fields |
-| `POST` | `/create_buy_order` | Submit a pending asset-purchase order |
-| `POST` | `/create_sell_order` | Submit a pending asset-sale order |
-| `GET` | `/health` | MongoDB and Redis health check |
-
-### Director Service - port `5002`
-
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/pending_orders` | List orders awaiting a decision |
-| `GET` | `/report` | Aggregate spending and earnings by asset category |
-| `POST` | `/decision` | Deploy a voting contract for a pending order |
-| `GET` | `/health` | MongoDB and Redis health check |
-
-## Getting started
-
-### Prerequisites
-
-- Python 3.12+
-- Docker with Docker Compose
-- Kubernetes and `kubectl` for the complete deployment
-- Git
-
-### 1. Clone the repository
-
-```bash
-git clone https://github.com/markomijanovic/investment-fund-management-platform.git
-cd investment-fund-management-platform
-```
-
-### 2. Create a Python environment
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-pip install -r requirements.txt
-```
-
-### 3. Configure the environment
-
-Create a `.env` file in the project root:
-
-```dotenv
-JWT_SECRET_KEY=replace-with-a-long-random-secret
-
-MYSQL_ROOT_PASSWORD=change-this-mysql-password
-MYSQL_DATABASE=investment_fund
-DATABASE_URL=mysql+pymysql://root:change-this-mysql-password@localhost:3306/investment_fund
-
-MONGO_ROOT_USERNAME=admin
-MONGO_ROOT_PASSWORD=change-this-password
-MONGO_DATABASE=investment_fund
-MONGO_URI=mongodb://admin:change-this-password@localhost:27017/?authSource=admin
-
-REDIS_PASSWORD=change-this-password
-REDIS_URI=redis://:change-this-password@localhost:6379/0
-
-BLOCKCHAIN_URL=http://127.0.0.1:8545
-```
-
-The values above are intended only for local development. Use secret management and dedicated credentials in any deployed environment.
-
-### 4. Start infrastructure services
-
-```bash
-docker compose -f compose.local.yaml up -d
-```
-
-This starts:
-
-- MongoDB on `localhost:27017`
-- Redis on `localhost:6379`
-- Ganache on `localhost:8545`
-- MySQL on `localhost:3306`
-
-### 5. Initialize the authentication database
-
-```bash
-mkdir -p instance
-python -m services.auth.init_db
-```
-
-The initializer creates the MySQL schema and the initial director account. Replace development fixtures before using the application outside a controlled local environment.
-
-### 6. Run the application components
-
-Start each process in a separate terminal with the virtual environment activated:
-
-```bash
-python -m services.auth.app
-```
-
-```bash
-python -m services.employee.app
-```
-
-```bash
-python -m services.director.app
-```
-
-```bash
-python -m services.blockchain_checker.main
-```
-
-The checker runs continuously by default. To execute a single polling cycle:
-
-```bash
-CHECKER_RUN_ONCE=true python -m services.blockchain_checker.main
-```
-
-## Kubernetes deployment
-
-Build the shared application image:
-
-```bash
-docker build -t iep-project:1.0.0 .
-```
-
-Create a local Secret manifest and replace every `CHANGE_ME` value. The resulting file is ignored by Git:
-
-```bash
-cp kubernetes/00-secrets.example.yaml kubernetes/00-secrets.yaml
-```
-
-Windows PowerShell equivalent:
-
-```powershell
-Copy-Item kubernetes/00-secrets.example.yaml kubernetes/00-secrets.yaml
-```
-
-Apply the manifests in order:
-
-```bash
-kubectl apply -f kubernetes/00-configuration.yaml
-kubectl apply -f kubernetes/00-secrets.yaml
-kubectl apply -f kubernetes/10-mysql.yaml
-kubectl rollout status deployment/mysql --timeout=180s
-kubectl apply -f kubernetes/11-sql-init-job.yaml
-kubectl wait --for=condition=complete job/sql-init --timeout=180s
-kubectl apply -f kubernetes/12-mongo-redis.yaml
-kubectl apply -f kubernetes/20-ganache.yaml
-kubectl apply -f kubernetes/30-applications.yaml
-kubectl apply -f kubernetes/40-blockchain-checker-cronjob.yaml
-```
-
-The SQL schema and initial director are created by the `sql-init` Kubernetes Job. The blockchain checker is a CronJob: it starts every minute and checks finalized contracts every two seconds during a bounded execution window. `concurrencyPolicy: Forbid` prevents scheduled executions from overlapping.
-
-Check the deployment:
-
-```bash
-kubectl get deployments
-kubectl get pods
-kubectl get jobs
-kubectl get cronjobs
-kubectl get services
-```
-
-If the local Kubernetes distribution does not expose NodePort on `127.0.0.1`, use port forwarding in four terminals:
-
-```bash
-kubectl port-forward service/authentication 15000:5000
-kubectl port-forward service/employee 15001:5001
-kubectl port-forward service/director 15002:5002
-kubectl port-forward service/ganache 18545:8545
-```
-
-The deployment uses one authentication replica, three employee replicas, one director replica, persistent storage for all three databases, a SQL initialization Job, and a contract-checking CronJob.
-
-## Example authentication request
-
-Register a local employee:
-
-```bash
-curl -X POST http://localhost:5000/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "forename": "Jane",
-    "surname": "Doe",
-    "email": "jane@example.com",
-    "password": "change-me-123"
-  }'
-```
-
-Log in and obtain an access token:
-
-```bash
-curl -X POST http://localhost:5000/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "jane@example.com",
-    "password": "change-me-123"
-  }'
-```
-
-## Smart-contract test
-
-With Ganache running, execute the contract integration test:
-
-```bash
-python blockchain/test_contract.py
-```
-
-The test deploys contracts, verifies majority approval, checks late-voting protection, and validates the director-only veto path.
-
-## Project structure
+## Struktura
 
 ```text
-.
-├── blockchain/
-│   ├── build/                       # Compiled ABI and bytecode
-│   ├── contracts/InvestmentVoting.sol
-│   └── test_contract.py
-├── services/
-│   ├── auth/                        # Users, login, JWTs, relational DB
-│   ├── employee/                    # Asset search and order creation
-│   ├── director/                    # Reports and voting decisions
-│   ├── blockchain_checker/          # Finalized-order processor
-│   └── common/                      # Shared authorization helpers
-├── kubernetes/                       # Deployments, Services, Job, CronJob, PVCs
-├── compose.local.yaml               # MySQL, MongoDB, Redis, and Ganache
-├── Dockerfile
-└── requirements.txt
+blockchain/       Solidity ugovor i kompajlirani artifact
+common/           konfiguracija, JWT, klijenti i zajedničke funkcije
+jobs/             periodična provera završenih glasanja
+k8s/all.yaml      kompletna Kubernetes definicija aplikacije
+professor_tests/  originalni profesorov grader
+services/         auth, employee i director mikroservisi
+scripts/          automatizacija za pokretanje, reset i testiranje
+tests/            interni brzi testovi
 ```
 
-## Current scope
+## Portovi
 
-This repository is an academic and portfolio backend project. It focuses on the service layer, persistence, workflow orchestration, and blockchain decision logic. A production deployment would additionally require hardened secrets, TLS, centralized logging, migrations, rate limiting, automated API tests, and a production WSGI server.
+| Servis | Lokalni URL |
+|---|---|
+| Auth | `http://127.0.0.1:5000` |
+| Employee | `http://127.0.0.1:5001` |
+| Director | `http://127.0.0.1:5002` |
+| Ganache | `http://127.0.0.1:8545` |
 
-## Author
+## macOS / Linux
 
-Developed and maintained by [Marko Mijanović](https://github.com/markomijanovic).
+Dok imaš internet, jednom pripremi image-e i grader:
+
+```bash
+./setup.sh
+```
+
+Pokretanje aplikacije i profesorovih testova:
+
+```bash
+./start.sh --clean
+./test.sh --reset
+```
+
+Kasnije koristi `./start.sh` bez brisanja podataka. Posle izmene izvornog koda koristi `./start.sh --build`.
+
+## Windows PowerShell
+
+Ako je izvršavanje lokalnih skripti blokirano, jednom u tom terminalu pokreni:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+```
+
+Zatim:
+
+```powershell
+.\setup.ps1
+.\start.ps1 -Clean
+.\test.ps1 -Reset
+```
+
+Docker Desktop mora koristiti Linux containers i Kubernetes mora biti uključen.
+
+## Šta rade skripte
+
+- `setup` preuzima infrastrukturne image-e, gradi četiri lokalna image-a i priprema grader venv; internet je potreban samo tada.
+- `start` primenjuje `k8s/all.yaml`, čeka baze, SQL Job i servise; ako image-i postoje, ne gradi ih ponovo.
+- `test --reset` vraća testne podatke u početno stanje, privremeno otvara potrebne portove i pokreće neizmenjene profesorove testove.
+
+## Korisne komande
+
+```bash
+kubectl get pods,services,jobs,cronjobs -n iep
+kubectl logs job/sql-init -n iep
+kubectl logs -l app=contract-checker -n iep --tail=50
+kubectl logs deployment/director -n iep --tail=50
+kubectl describe pod IME_PODA -n iep
+```
+
+Direktor se inicijalizuje kroz SQL Job:
+
+```text
+email:    onlymoney@gmail.com
+password: evenmoremoney
+```
+
+Interni testovi, nezavisni od pokrenutog klastera:
+
+```bash
+.venv/bin/python -m pytest -q tests
+```

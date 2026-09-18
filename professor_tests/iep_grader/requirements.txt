@@ -1,0 +1,8 @@
+requests==2.31.0
+pyjwt==2.7.0
+python-dateutil==2.8.2
+web3==6.5.0
+# web3==6.5.0 bundles a pytest11 plugin (web3.tools.pytest_ethereum) that imports
+# eth_typing.ContractName, which was removed in eth-typing 5.0.0. Pin below that
+# so a plain `pip install` doesn't leave pytest unable to start.
+eth-typing<5

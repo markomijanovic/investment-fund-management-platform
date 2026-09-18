@@ -1,0 +1,2 @@
+"""Pozadinski Kubernetes poslovi."""
+
