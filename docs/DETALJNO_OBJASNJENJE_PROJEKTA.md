@@ -1175,7 +1175,7 @@ Ovo je najsloženija skripta.
 - Ako namespace ne postoji i tražen je reset, skripta pokreće clean start.
 - Ako namespace postoji i tražen je reset, poziva reset test podataka.
 - Ako nema grader venv-a, kreira ga i instalira zavisnosti.
-- Proverava da `pkg_resources` može da se importuje.
+- Proverava da modul `pkg_resources` postoji pomoću `importlib.util.find_spec`, bez samog uvoza modula. Time Windows PowerShell ne pretvara njegovo deprecation upozorenje sa `stderr` izlaza u fatalni `NativeCommandError`.
 
 ### Port-forward
 
@@ -1562,4 +1562,3 @@ Probaj da odgovoriš bez gledanja.
 30. Koju komandu prvo koristiš za `CrashLoopBackOff`?
 
 Ako možeš jasno odgovoriti na ovih 30 pitanja i nacrtati odobreni BUY tok, razumeš projekat dovoljno dobro za ozbiljnu odbranu.
-

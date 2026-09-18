@@ -50,8 +50,10 @@ if (-not (Test-Path $GraderPython)) {
 }
 
 # Python 3.12 venv vise ne instalira setuptools automatski, a web3 6.5.0
-# jos uvek uvozi pkg_resources iz tog paketa.
-& $GraderPython -c "import pkg_resources" 2>$null
+# jos uvek uvozi pkg_resources iz tog paketa. Proveravamo postojanje modula
+# bez njegovog uvoza, jer import na Windows PowerShell-u ispisuje upozorenje
+# na stderr koje ErrorActionPreference=Stop moze tretirati kao fatalnu gresku.
+& $GraderPython -c "import importlib.util, sys; sys.exit(0 if importlib.util.find_spec('pkg_resources') else 1)" 2>$null
 if ($LASTEXITCODE -ne 0) {
     & $GraderPython -m pip install "setuptools==70.3.0"
     if ($LASTEXITCODE -ne 0) { throw "Instalacija setuptools paketa nije uspela." }
