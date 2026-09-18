@@ -433,7 +433,70 @@ Za profesorove testove koristi se poseban venv:
 professor_tests/iep_grader/.venv
 ```
 
+Root `.venv`, koji PyCharm ili drugi IDE može automatski napraviti u glavnom
+direktorijumu projekta, nije potreban za pokretanje Kubernetes aplikacije niti
+profesorovog gradera. On je opcion i služi samo za razvoj i interne testove.
+
 Nemoj ručno pokretati globalni `pytest`; koristi `test.sh` ili `test.ps1`.
+
+### Windows: grader venv se nije automatski napravio
+
+Prvo uđi u root direktorijum projekta i proveri da li Windows vidi Python 3:
+
+```powershell
+cd C:\putanja\do\iep_projekat_predaja
+py -3 --version
+```
+
+Ako komanda `py` ne postoji, probaj:
+
+```powershell
+python --version
+```
+
+Ako ne radi nijedna, Python 3 nije pravilno instaliran. Instaliraj ga dok imaš
+internet i pri instalaciji uključi opcije **Add python.exe to PATH** i
+**Python Launcher**. Zatvori i ponovo otvori PowerShell.
+
+Ako `py -3` radi, ručno napravi obavezni grader venv i instaliraj njegove
+zavisnosti:
+
+```powershell
+py -3 -m venv .\professor_tests\iep_grader\.venv
+& ".\professor_tests\iep_grader\.venv\Scripts\python.exe" -m pip install "setuptools==70.3.0"
+& ".\professor_tests\iep_grader\.venv\Scripts\python.exe" -m pip install -r ".\professor_tests\iep_grader\requirements-pytest.txt"
+```
+
+Ako koristiš komandu `python` umesto `py`, samo prvu komandu zameni sa:
+
+```powershell
+python -m venv .\professor_tests\iep_grader\.venv
+```
+
+Proveri da je napravljen pravi Windows interpreter:
+
+```powershell
+Test-Path ".\professor_tests\iep_grader\.venv\Scripts\python.exe"
+& ".\professor_tests\iep_grader\.venv\Scripts\python.exe" --version
+```
+
+Prva komanda mora da ispiše `True`. Nije potrebno aktivirati venv, jer
+`test.ps1` direktno poziva njegov `python.exe`. Zatim pokreni:
+
+```powershell
+.\test.ps1 -Reset
+```
+
+Ako želiš i opcioni root venv za interne testove, napravi ga odvojeno:
+
+```powershell
+py -3 -m venv .venv
+& ".\.venv\Scripts\python.exe" -m pip install -r requirements-dev.txt
+& ".\.venv\Scripts\python.exe" -m pytest -q tests
+```
+
+Nemoj instalirati profesorove zavisnosti u root `.venv`: dva okruženja su
+odvojena da se njihove verzije paketa ne bi sukobile.
 
 Greška `No module named pkg_resources` rešava se ovako:
 

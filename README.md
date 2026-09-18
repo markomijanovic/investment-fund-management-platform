@@ -72,6 +72,11 @@ Zatim:
 
 Docker Desktop mora koristiti Linux containers i Kubernetes mora biti uključen.
 
+Root `.venv` nije potreban za pokretanje aplikacije. Profesorov grader koristi
+posebno okruženje `professor_tests\iep_grader\.venv`, koje `setup.ps1` i
+`test.ps1` prave automatski. Ako automatsko pravljenje ne uspe, ručni Windows
+postupak nalazi se u [docs/PROBLEMI_NA_ODBRANI.md](docs/PROBLEMI_NA_ODBRANI.md#14-venv-ili-python-zavisnosti-ne-rade).
+
 ## Šta rade skripte
 
 - `setup` preuzima infrastrukturne image-e, gradi četiri lokalna image-a i priprema grader venv; internet je potreban samo tada.

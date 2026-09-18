@@ -1280,6 +1280,12 @@ Root `.venv` služi za razvoj i interne testove.
 
 Odvajanje sprečava konflikt između modernih projektnih biblioteka i profesorovih fiksiranih starijih biblioteka.
 
+Za samo pokretanje Kubernetes aplikacije root `.venv` uopšte nije potreban.
+Na Windowsu `setup.ps1` i `test.ps1` automatski prave grader venv i koriste
+`professor_tests\iep_grader\.venv\Scripts\python.exe`. Ako automatsko pravljenje
+ne uspe, detaljan ručni postupak nalazi se u `docs/PROBLEMI_NA_ODBRANI.md`, u
+odeljku 14.
+
 Aktivan `(.venv)` u terminal promptu ne utiče na Docker kontejnere. Kontejner ima svoj Python i svoje pakete.
 
 ## `pytest.ini`
